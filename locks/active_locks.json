@@ -1,3 +1,14 @@
 {
-  "locks": {}
+  "locks": {
+    "db/procs/02_customer_tier_view.sql": {
+      "locked_at": "2026-11-10T19:32:58Z",
+      "ticket": "REL-101",
+      "user": "SrinivasanPakkirisamy"
+    },
+    "unix/scripts/batch_sync.sh": {
+      "locked_at": "2026-11-10T19:32:58Z",
+      "ticket": "REL-101",
+      "user": "SrinivasanPakkirisamy"
+    }
+  }
 }
