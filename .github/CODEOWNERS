@@ -1,0 +1,5 @@
+# Automatic Code Review Routing by Domain
+/db/**        @SrinivasanPakkirisamy
+/unix/**      @SrinivasanPakkirisamy
+/manifests/** @SrinivasanPakkirisamy
+/locks/**     @SrinivasanPakkirisamy

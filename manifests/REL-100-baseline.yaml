@@ -1,21 +1,21 @@
-release_id: "REL-100-baseline"
-description: "Initial baseline schema and Unix batch sync script"
-author: "platform-init"
-source_env: "DEVELOP"
+release_id: REL-100-baseline
+description: Initial baseline schema and Unix batch sync script
+author: platform-init
+source_env: DEVELOP
 objects:
   database:
-    - path: "db/ddl/01_customers.sql"
-      version: "HEAD"
-      order: 1
-    - path: "db/procs/02_customer_tier_view.sql"
-      version: "HEAD"
-      order: 2
+  - path: db/ddl/01_customers.sql
+    version: 80a7663311f1faec9deb8224e8feb1246823e93d
+    order: 1
+  - path: db/procs/02_customer_tier_view.sql
+    version: 80a7663311f1faec9deb8224e8feb1246823e93d
+    order: 2
   unix:
-    - path: "unix/scripts/batch_sync.sh"
-      version: "HEAD"
-      target_dir: "opt/app/bin"
-      permissions: "0755"
-    - path: "unix/config/app_env.conf"
-      version: "HEAD"
-      target_dir: "opt/app/conf"
-      permissions: "0644"
+  - path: unix/scripts/batch_sync.sh
+    version: 80a7663311f1faec9deb8224e8feb1246823e93d
+    target_dir: opt/app/bin
+    permissions: '0755'
+  - path: unix/config/app_env.conf
+    version: 80a7663311f1faec9deb8224e8feb1246823e93d
+    target_dir: opt/app/conf
+    permissions: '0644'
