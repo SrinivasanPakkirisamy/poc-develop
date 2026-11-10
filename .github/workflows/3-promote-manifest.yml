@@ -68,15 +68,17 @@ jobs:
             --target-env "$TARGET_ENV" \
             --actor "${GITHUB_ACTOR}"
 
-          cd .promotion_work
-          git add -A
-          if git diff --cached --quiet; then
+          git -C .promotion_work add -A
+          if git -C .promotion_work diff --cached --quiet; then
             echo "ℹ️ Target repository already has identical versions for ${RELEASE_ID}."
             exit 0
           fi
 
-          git commit -m "Promote ${RELEASE_ID} from ${SOURCE_ENV} to ${TARGET_ENV} via ${MANIFEST_PATH}"
-          git push --force origin "$BRANCH_NAME"
+          git -C .promotion_work commit -m "Promote ${RELEASE_ID} objects from ${SOURCE_ENV} to ${TARGET_ENV}"
+          python3 scripts/manifest_tool.py stamp "$MANIFEST_PATH" --repo-dir ".promotion_work" --force
+          git -C .promotion_work add "$MANIFEST_PATH"
+          git -C .promotion_work commit -m "Pin target environment commit SHAs in ${MANIFEST_PATH}"
+          git -C .promotion_work push --force origin "$BRANCH_NAME"
 
           EXISTING_PR=$(gh pr list --repo "${REPO_OWNER}/${TARGET_REPO}" --head "$BRANCH_NAME" --json url --jq '.[0].url')
           if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
@@ -92,7 +94,7 @@ jobs:
           ### Included Manifest
           - Manifest: \`${MANIFEST_PATH}\`
           - Triggered by: @${GITHUB_ACTOR}
-          - All database and Unix objects extracted at their **exact pinned Git commit SHAs**.")
+          - All database and Unix objects extracted at their **exact pinned Git commit SHAs** with cryptographic SHA-256 verification.")
             echo "✅ Created Promotion PR: $PR_URL"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### 🔗 Created Target Pull Request: [$PR_URL]($PR_URL)" >> "$GITHUB_STEP_SUMMARY"

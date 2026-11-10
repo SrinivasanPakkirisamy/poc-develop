@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 Manifest Packaging & Selective Version Promotion Tool:
-  - stamp: Pins each object's exact git commit SHA in the manifest YAML.
+  - stamp: Pins each object's exact git commit SHA (and SHA-256) in the manifest YAML.
   - extract: Extracts the exact commit SHA of each object listed in a manifest
-             from a source git repository into a target repository directory.
+             from a source git repository into a target repository directory,
+             preserving origin_sha and verifying cryptographic SHA-256 integrity.
 """
 import argparse
 import datetime
@@ -28,8 +29,17 @@ def git_last_commit_for_file(repo_dir: str, rel_path: str) -> str:
     return sha
 
 
+def git_commit_exists(repo_dir: str, sha: str) -> bool:
+    res = subprocess.run(
+        ["git", "-C", repo_dir, "cat-file", "-e", f"{sha}^{{commit}}"],
+        capture_output=True,
+        check=False,
+    )
+    return res.returncode == 0
+
+
 def git_show_file_at_version(repo_dir: str, version: str, rel_path: str) -> bytes:
-    if version == "HEAD":
+    if version in ("HEAD", "LATEST", "", None) or not git_commit_exists(repo_dir, version):
         version = git_last_commit_for_file(repo_dir, rel_path)
     res = subprocess.run(
         ["git", "-C", repo_dir, "show", f"{version}:{rel_path}"],
@@ -44,22 +54,28 @@ def git_show_file_at_version(repo_dir: str, version: str, rel_path: str) -> byte
 
 
 def cmd_stamp(args: argparse.Namespace) -> int:
-    with open(args.manifest, "r", encoding="utf-8") as f:
+    repo_dir = args.repo_dir
+    manifest_full = os.path.join(repo_dir, args.manifest) if not os.path.isabs(args.manifest) else args.manifest
+    with open(manifest_full, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     for section in ("database", "unix"):
         for item in data.get("objects", {}).get(section, []) or []:
             rel_path = item["path"]
-            if item.get("version") in (None, "", "HEAD", "LATEST"):
-                sha = git_last_commit_for_file(".", rel_path)
+            if args.force or item.get("version") in (None, "", "HEAD", "LATEST"):
+                sha = git_last_commit_for_file(repo_dir, rel_path)
+                if "origin_sha" not in item:
+                    item["origin_sha"] = sha
                 item["version"] = sha
-                print(f"📌 Stamped {rel_path} -> {sha[:10]}")
+                content = git_show_file_at_version(repo_dir, sha, rel_path)
+                item["sha256"] = hashlib.sha256(content).hexdigest()[:16]
+                print(f"📌 Stamped {rel_path} -> commit={sha[:10]} (origin={item['origin_sha'][:10]}, sha256={item['sha256']})")
             else:
                 print(f"ℹ️  Kept pinned {rel_path} -> {item['version'][:10]}")
 
-    with open(args.manifest, "w", encoding="utf-8") as f:
+    with open(manifest_full, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, sort_keys=False)
-    print(f"✅ Updated manifest: {args.manifest}")
+    print(f"✅ Updated manifest: {manifest_full}")
     return 0
 
 
@@ -76,12 +92,22 @@ def cmd_extract(args: argparse.Namespace) -> int:
             rel_path = item["path"]
             req_version = item.get("version", "HEAD")
             resolved_sha = (
-                git_last_commit_for_file(args.source_dir, rel_path)
-                if req_version in ("HEAD", "LATEST", "", None)
-                else req_version
+                req_version
+                if req_version not in ("HEAD", "LATEST", "", None) and git_commit_exists(args.source_dir, req_version)
+                else git_last_commit_for_file(args.source_dir, rel_path)
             )
             content = git_show_file_at_version(args.source_dir, resolved_sha, rel_path)
-            item["version"] = resolved_sha
+            sha256 = hashlib.sha256(content).hexdigest()[:16]
+
+            # Verify SHA-256 integrity if previously stamped
+            expected_sha256 = item.get("sha256")
+            if expected_sha256 and expected_sha256 != sha256:
+                raise RuntimeError(
+                    f"Integrity mismatch for {rel_path}: expected sha256={expected_sha256}, got {sha256}"
+                )
+
+            item["origin_sha"] = item.get("origin_sha") or resolved_sha
+            item["sha256"] = sha256
 
             dest_path = os.path.join(args.target_dir, rel_path)
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
@@ -91,18 +117,18 @@ def cmd_extract(args: argparse.Namespace) -> int:
             if rel_path.endswith(".sh"):
                 os.chmod(dest_path, 0o755)
 
-            sha256 = hashlib.sha256(content).hexdigest()
             extracted_records.append(
                 {
                     "section": section,
                     "path": rel_path,
-                    "commit_sha": resolved_sha,
-                    "sha256": sha256[:12],
+                    "source_commit_sha": resolved_sha,
+                    "origin_sha": item["origin_sha"],
+                    "sha256": sha256,
                 }
             )
-            print(f"📦 Extracted {rel_path} @ commit {resolved_sha[:10]} (sha256={sha256[:12]})")
+            print(f"📦 Extracted {rel_path} @ commit {resolved_sha[:10]} (origin={item['origin_sha'][:10]}, sha256={sha256})")
 
-    # Save stamped manifest into target repo
+    # Save manifest into target repo
     data["promoted_from"] = args.source_env
     data["target_env"] = args.target_env
     dest_manifest = os.path.join(args.target_dir, args.manifest)
@@ -129,11 +155,13 @@ def cmd_extract(args: argparse.Namespace) -> int:
         lines = [
             f"## 🚀 Cross-Repo Manifest Promotion: `{release_id}` (`{args.source_env}` ➡️ `{args.target_env}`)",
             "",
-            "| Category | Object Path | Migrated Git Commit SHA | File SHA-256 |",
-            "| :--- | :--- | :--- | :--- |",
+            "| Category | Object Path | Source Commit SHA | Origin DEV SHA | File SHA-256 |",
+            "| :--- | :--- | :--- | :--- | :--- |",
         ]
         for r in extracted_records:
-            lines.append(f"| `{r['section']}` | `{r['path']}` | `{r['commit_sha'][:10]}` | `{r['sha256']}` |")
+            lines.append(
+                f"| `{r['section']}` | `{r['path']}` | `{r['source_commit_sha'][:10]}` | `{r['origin_sha'][:10]}` | `{r['sha256']}` |"
+            )
         with open(summary_path, "a", encoding="utf-8") as sf:
             sf.write("\n".join(lines) + "\n")
 
@@ -147,6 +175,8 @@ def main() -> int:
 
     p_stamp = sub.add_parser("stamp", help="Stamp exact commit SHAs into manifest")
     p_stamp.add_argument("manifest", help="Path to manifest YAML")
+    p_stamp.add_argument("--repo-dir", default=".", help="Git repository root")
+    p_stamp.add_argument("--force", action="store_true", help="Update version SHA to target repo commit while preserving origin_sha")
 
     p_ext = sub.add_parser("extract", help="Extract pinned versions into target repo directory")
     p_ext.add_argument("manifest", help="Relative path to manifest YAML")
