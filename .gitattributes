@@ -1,0 +1,11 @@
+# Enable Git LFS lockable flag while keeping plain-text Git storage for inline PR diffs & git show
+db/**/*.sql lockable
+unix/**/*.sh lockable
+
+# Enforce Unix LF line endings across all environments
+*.sql text eol=lf
+*.sh text eol=lf
+*.conf text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.py text eol=lf

@@ -1,0 +1,6 @@
+{
+  "files.eol": "\n",
+  "merge-conflict.autoNavigateNextConflict.enabled": true,
+  "git.mergeEditor": true,
+  "git.autofetch": true
+}

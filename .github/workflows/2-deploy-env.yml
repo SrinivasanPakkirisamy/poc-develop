@@ -1,0 +1,84 @@
+name: "2. Deploy Manifest to DB & Unix Server"
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: "Manifest file to deploy (leave blank for latest manifest)"
+        required: false
+        default: ""
+
+jobs:
+  determine-env:
+    name: "Resolve Target Environment"
+    runs-on: ubuntu-latest
+    outputs:
+      env_name: ${{ steps.resolve.outputs.env_name }}
+      db_name: ${{ steps.resolve.outputs.db_name }}
+    steps:
+      - id: resolve
+        run: |
+          REPO_SHORT="${GITHUB_REPOSITORY##*/}"
+          case "$REPO_SHORT" in
+            *prod*) ENV_NAME="PROD"; DB_NAME="db_prod" ;;
+            *stg*)  ENV_NAME="STG";  DB_NAME="db_stg"  ;;
+            *qa*)   ENV_NAME="QA";   DB_NAME="db_qa"   ;;
+            *)      ENV_NAME="DEVELOP"; DB_NAME="db_develop" ;;
+          esac
+          echo "env_name=$ENV_NAME" >> "$GITHUB_OUTPUT"
+          echo "db_name=$DB_NAME" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: "Deploy to ${{ needs.determine-env.outputs.env_name }} DB & Unix"
+    needs: determine-env
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine-env.outputs.env_name }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: app_deployer
+          POSTGRES_PASSWORD: poc_secure_password
+          POSTGRES_DB: ${{ needs.determine-env.outputs.db_name }}
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: app_deployer
+      PGPASSWORD: poc_secure_password
+      PGDATABASE: ${{ needs.determine-env.outputs.db_name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client & PyYAML
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          python3 -m pip install --quiet pyyaml
+
+      - name: Deploy Manifest Package to PostgreSQL & Unix Target
+        run: |
+          MANIFEST_ARG=""
+          if [ -n "${{ inputs.manifest_path }}" ]; then
+            MANIFEST_ARG="--manifest ${{ inputs.manifest_path }}"
+          fi
+          python3 scripts/deploy_manifest.py \
+            --env "${{ needs.determine-env.outputs.env_name }}" \
+            $MANIFEST_ARG
+
+      - name: Upload Immutable Release Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle-${{ needs.determine-env.outputs.env_name }}-${{ github.run_number }}
+          path: .deploy_artifacts/*.tar.gz

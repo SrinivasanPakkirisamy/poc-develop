@@ -1,0 +1,99 @@
+name: "3. Promote Manifest & Specific Versions to Target Repo"
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: "Path to Manifest YAML (e.g., manifests/REL-101.yaml)"
+        required: true
+        default: "manifests/REL-101.yaml"
+      target_repo:
+        description: "Target Environment Repository"
+        required: true
+        type: choice
+        options:
+          - poc-qa
+          - poc-stg
+          - poc-prod
+
+jobs:
+  promote-manifest:
+    name: "Promote ${{ inputs.manifest_path }} -> ${{ inputs.target_repo }}"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source repository with full commit history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install PyYAML
+        run: python3 -m pip install --quiet pyyaml
+
+      - name: Extract Pinned Object Versions & Open PR in Target Repo
+        env:
+          GH_TOKEN: ${{ secrets.PROMOTION_TOKEN }}
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          SOURCE_REPO: ${{ github.event.repository.name }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "❌ ERROR: PROMOTION_TOKEN secret is required to push across environment repositories."
+            exit 1
+          fi
+
+          case "$SOURCE_REPO" in
+            *stg*) SOURCE_ENV="STG" ;;
+            *qa*)  SOURCE_ENV="QA"  ;;
+            *)     SOURCE_ENV="DEVELOP" ;;
+          esac
+          case "$TARGET_REPO" in
+            *prod*) TARGET_ENV="PROD" ;;
+            *stg*)  TARGET_ENV="STG"  ;;
+            *)      TARGET_ENV="QA"   ;;
+          esac
+
+          RELEASE_ID=$(python3 -c "import yaml; print(yaml.safe_load(open('$MANIFEST_PATH'))['release_id'])")
+          BRANCH_NAME="promote/${RELEASE_ID}-from-${SOURCE_ENV}"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${REPO_OWNER}/${TARGET_REPO}.git" .promotion_work
+          git -C .promotion_work config user.name "${GITHUB_ACTOR}"
+          git -C .promotion_work config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git -C .promotion_work checkout -B "$BRANCH_NAME"
+
+          python3 scripts/manifest_tool.py extract "$MANIFEST_PATH" \
+            --source-dir "." \
+            --target-dir ".promotion_work" \
+            --source-env "$SOURCE_ENV" \
+            --target-env "$TARGET_ENV" \
+            --actor "${GITHUB_ACTOR}"
+
+          cd .promotion_work
+          git add -A
+          if git diff --cached --quiet; then
+            echo "ℹ️ Target repository already has identical versions for ${RELEASE_ID}."
+            exit 0
+          fi
+
+          git commit -m "Promote ${RELEASE_ID} from ${SOURCE_ENV} to ${TARGET_ENV} via ${MANIFEST_PATH}"
+          git push --force origin "$BRANCH_NAME"
+
+          EXISTING_PR=$(gh pr list --repo "${REPO_OWNER}/${TARGET_REPO}" --head "$BRANCH_NAME" --json url --jq '.[0].url')
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "✅ Updated existing Promotion PR: $EXISTING_PR"
+          else
+            PR_URL=$(gh pr create \
+              --repo "${REPO_OWNER}/${TARGET_REPO}" \
+              --base main \
+              --head "$BRANCH_NAME" \
+              --title "🚀 Release Migration [${TARGET_ENV}]: ${RELEASE_ID}" \
+              --body "Automated cross-repo promotion of **${RELEASE_ID}** from \`${SOURCE_REPO}\` (\`${SOURCE_ENV}\`) to \`${TARGET_REPO}\` (\`${TARGET_ENV}\`).
+
+          ### Included Manifest
+          - Manifest: \`${MANIFEST_PATH}\`
+          - Triggered by: @${GITHUB_ACTOR}
+          - All database and Unix objects extracted at their **exact pinned Git commit SHAs**.")
+            echo "✅ Created Promotion PR: $PR_URL"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### 🔗 Created Target Pull Request: [$PR_URL]($PR_URL)" >> "$GITHUB_STEP_SUMMARY"
+          fi

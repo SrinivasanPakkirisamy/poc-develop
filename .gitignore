@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.sqlite
+*.db
+.promotion_work/
+.deploy_artifacts/

@@ -1,0 +1,54 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "1. Lock Object (Coordinate Edit)",
+      "type": "shell",
+      "command": "python3 scripts/lock_manager.py lock \"${relativeFile}\" --user \"$(git config user.name)\" --ticket \"${input:ticketId}\"",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "2. Unlock Object",
+      "type": "shell",
+      "command": "python3 scripts/lock_manager.py unlock \"${relativeFile}\" --user \"$(git config user.name)\"",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "3. View Active Locks & Audit Trail",
+      "type": "shell",
+      "command": "python3 scripts/lock_manager.py status",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "4. Run Pre-Checkin Rule Validation",
+      "type": "shell",
+      "command": "python3 scripts/validate_rules.py --base HEAD~1",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "5. Stamp Manifest Object Versions (Pin Commit SHAs)",
+      "type": "shell",
+      "command": "python3 scripts/manifest_tool.py stamp \"manifests/${input:manifestFile}\"",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "ticketId",
+      "type": "promptString",
+      "description": "Enter Ticket / Change ID (e.g., REL-101)",
+      "default": "REL-101"
+    },
+    {
+      "id": "manifestFile",
+      "type": "promptString",
+      "description": "Manifest filename inside manifests/ (e.g., REL-101.yaml)",
+      "default": "REL-101.yaml"
+    }
+  ]
+}
