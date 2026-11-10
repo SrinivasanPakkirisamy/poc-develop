@@ -7,15 +7,23 @@ objects:
   - path: db/ddl/01_customers.sql
     version: 80a7663311f1faec9deb8224e8feb1246823e93d
     order: 1
+    origin_sha: 80a7663311f1faec9deb8224e8feb1246823e93d
+    sha256: 8f8195d5aebbd997
   - path: db/procs/02_customer_tier_view.sql
     version: 80a7663311f1faec9deb8224e8feb1246823e93d
     order: 2
+    origin_sha: 80a7663311f1faec9deb8224e8feb1246823e93d
+    sha256: 80687d8c74ae4ca6
   unix:
   - path: unix/scripts/batch_sync.sh
     version: 80a7663311f1faec9deb8224e8feb1246823e93d
     target_dir: opt/app/bin
     permissions: '0755'
+    origin_sha: 80a7663311f1faec9deb8224e8feb1246823e93d
+    sha256: 5c6bc6ff7aec8a97
   - path: unix/config/app_env.conf
     version: 80a7663311f1faec9deb8224e8feb1246823e93d
     target_dir: opt/app/conf
     permissions: '0644'
+    origin_sha: 80a7663311f1faec9deb8224e8feb1246823e93d
+    sha256: a392bb8c95e533aa
