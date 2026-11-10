@@ -1,0 +1,23 @@
+release_id: REL-101
+description: Upgrade Gold (12%) & Platinum (18%) discounts + Unix batch sync v2.0
+author: SrinivasanPakkirisamy
+source_env: DEVELOP
+objects:
+  database:
+  - path: db/ddl/01_customers.sql
+    version: 80a7663311f1faec9deb8224e8feb1246823e93d
+    order: 1
+    origin_sha: 80a7663311f1faec9deb8224e8feb1246823e93d
+    sha256: 8f8195d5aebbd997
+  - path: db/procs/02_customer_tier_view.sql
+    version: 11baa01135c760f6655c292c2ea81a708f0d3828
+    order: 2
+    origin_sha: 11baa01135c760f6655c292c2ea81a708f0d3828
+    sha256: 2aabc640f434bd5c
+  unix:
+  - path: unix/scripts/batch_sync.sh
+    version: 11baa01135c760f6655c292c2ea81a708f0d3828
+    target_dir: opt/app/bin
+    permissions: '0755'
+    origin_sha: 11baa01135c760f6655c292c2ea81a708f0d3828
+    sha256: fd3f16416204ba14
